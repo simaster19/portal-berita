@@ -6,13 +6,14 @@ use App\Models\Post;
 use Illuminate\Http\Request;
 use App\Http\Resources\PostResource;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use App\Http\Resources\PostDetailResource;
 
 class PostController extends Controller
 {
     public function index()
     {
-        $posts = Post::with('writer:id,username')->get();
+        $posts = Post::with(['writer:id,username', 'comments:id,post_id,user_id,comments_content'])->get();
         //return response()->json('data' => $posts);
         return PostDetailResource::collection($posts);
     }
@@ -21,7 +22,7 @@ class PostController extends Controller
     {
         $post = Post::with('writer:id,username')->findOrFail($id);
         //return response()->json(['data' => $post]);
-        return new PostDetailResource($post);
+        return new PostDetailResource($post->loadMissing(['writer:id,username', 'comments:id,post_id,user_id,comments_content']));
     }
 
     public function store(Request $request)
@@ -31,8 +32,18 @@ class PostController extends Controller
             'news_content' => 'required',
         ]);
 
-        $request['author'] = Auth::user()->id;
+        $image = NULL;
+        if ($request->file) {
+            //upload Image
+            $fileName = $this->generateRandomString();
+            $extension = $request->file->extension();
+            $image = $fileName . '.' . $extension;
 
+            Storage::putFileAs('image', $request->file, $image);
+        }
+
+        $request['image'] = $image;
+        $request['author'] = Auth::user()->id;
         $post = Post::create($request->all());
         return new PostDetailResource($post->loadMissing('writer:id,username'));
     }
@@ -56,5 +67,16 @@ class PostController extends Controller
         $post->delete();
 
         return new PostDetailResource($post->loadMissing('writer:id,username'));
+    }
+
+    function generateRandomString($length = 30)
+    {
+        $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $charactersLength = strlen($characters);
+        $randomString = '';
+        for ($i = 0; $i < $length; $i++) {
+            $randomString .= $characters[rand(0, $charactersLength - 1)];
+        }
+        return $randomString;
     }
 }
